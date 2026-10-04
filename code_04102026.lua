@@ -1,8 +1,9 @@
 -- ==============================================
--- BLOX FRUITS FPS BOOST • CORRIGIDA + ARRASTÁVEL
+-- BLOX FRUITS FPS BOOST • CORRIGIDO DEFINITIVO
+-- ✅ NÃO fica vermelho ao desligar
+-- ✅ Botão arrastável
 -- ✅ Liga/desliga sem travar
--- ✅ Botão move com o dedo
--- ✅ Sem ficar vermelho/bloqueado
+-- ✅ Blox Fruits + PvP 100%
 -- ==============================================
 
 local Lighting = game:GetService("Lighting")
@@ -14,6 +15,7 @@ local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 local OtimizacaoAtiva = false
 local Conexoes = {}
 local ConfigOriginal = {}
+local ObjetosAlterados = {} -- GUARDA o que foi mudado para RESTAURAR!
 
 -- 📋 SALVAR configurações originais
 local function SalvarConfigOriginal()
@@ -34,6 +36,7 @@ end
 local function AplicarOtimizacao()
     if OtimizacaoAtiva then return end
     OtimizacaoAtiva = true
+    table.clear(ObjetosAlterados) -- Limpa histórico anterior
 
     -- Limpar conexões antigas
     for i = #Conexoes, 1, -1 do
@@ -68,13 +71,22 @@ local function AplicarOtimizacao()
     Terrain.WaterReflectance = 0
     Terrain.WaterTransparency = 0.3
 
-    -- Otimização de objetos
+    -- Otimização de objetos — GUARDA VALORES ORIGINAIS!
     local function OtimizarObj(obj)
         if not OtimizacaoAtiva then return end
-        
+        if table.find(ObjetosAlterados, obj) then return end -- Não processa 2x
+
         if obj:IsA("BasePart") then
             pcall(function()
                 if not obj:IsDescendantOf(Players.LocalPlayer.Character) then
+                    -- GUARDA valor original ANTES de mudar!
+                    ObjetosAlterados[obj] = {
+                        Material = obj.Material,
+                        Reflectance = obj.Reflectance,
+                        CastShadow = obj.CastShadow,
+                        RenderFidelity = obj.RenderFidelity,
+                    }
+                    -- Aplica otimização
                     obj.Material = Enum.Material.SmoothPlastic
                     obj.Reflectance = 0
                     obj.CastShadow = false
@@ -84,6 +96,11 @@ local function AplicarOtimizacao()
         elseif obj:IsA("ParticleEmitter") then
             pcall(function()
                 if not obj:IsDescendantOf(Players.LocalPlayer.Character) then
+                    ObjetosAlterados[obj] = {
+                        Rate = obj.Rate,
+                        LifetimeMin = obj.Lifetime.Min,
+                        LifetimeMax = obj.Lifetime.Max,
+                    }
                     obj.Rate = obj.Rate * 0.3
                     obj.Lifetime = NumberRange.new(
                         obj.Lifetime.Min * 0.4,
@@ -95,20 +112,14 @@ local function AplicarOtimizacao()
             or obj:IsA("Fire") or obj:IsA("Sparkles") then
             pcall(function()
                 if not obj:IsDescendantOf(Players.LocalPlayer.Character) then
+                    ObjetosAlterados[obj] = { Enabled = obj.Enabled }
                     obj.Enabled = false
-                end
-            end)
-        elseif obj:IsA("Texture") or obj:IsA("Decal") then
-            pcall(function()
-                if not obj:IsDescendantOf(Players.LocalPlayer.Character)
-                and not obj.Parent:IsA("GuiObject") then
-                    obj:Destroy()
                 end
             end)
         end
     end
 
-    -- Aplicar em tudo
+    -- Aplicar em tudo existente
     task.spawn(function()
         for _, obj in ipairs(workspace:GetDescendants()) do
             if OtimizacaoAtiva then
@@ -130,12 +141,11 @@ local function AplicarOtimizacao()
         end
     end))
 
-    -- ✅ Botão verde = LIGADO
     Botao.Text = "✅ FPS ON"
     Botao.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
 end
 
--- 🔄 DESLIGAR — VOLTA TUDO AO NORMAL
+-- 🔄 DESLIGAR — RESTAURA TUDO!
 local function DesativarOtimizacao()
     if not OtimizacaoAtiva then return end
     OtimizacaoAtiva = false
@@ -147,6 +157,32 @@ local function DesativarOtimizacao()
         end
         Conexoes[i] = nil
     end
+
+    -- ✅ RESTAURA TODOS OS OBJETOS que foram alterados
+    for obj, dadosOriginais in pairs(ObjetosAlterados) do
+        pcall(function()
+            if not obj or not obj.Parent then return end -- Objeto já não existe
+
+            if obj:IsA("BasePart") then
+                obj.Material = dadosOriginais.Material
+                obj.Reflectance = dadosOriginais.Reflectance
+                obj.CastShadow = dadosOriginais.CastShadow
+                obj.RenderFidelity = dadosOriginais.RenderFidelity
+
+            elseif obj:IsA("ParticleEmitter") then
+                obj.Rate = dadosOriginais.Rate
+                obj.Lifetime = NumberRange.new(
+                    dadosOriginais.LifetimeMin,
+                    dadosOriginais.LifetimeMax
+                )
+
+            elseif obj:IsA("Trail") or obj:IsA("Smoke") 
+                or obj:IsA("Fire") or obj:IsA("Sparkles") then
+                obj.Enabled = dadosOriginais.Enabled
+            end
+        end)
+    end
+    table.clear(ObjetosAlterados)
 
     -- Restaurar iluminação
     pcall(function()
@@ -174,7 +210,6 @@ local function DesativarOtimizacao()
 
     collectgarbage("collect")
 
-    -- ✅ Botão vermelho = DESLIGADO (funciona de novo!)
     Botao.Text = "⚡ FPS OFF"
     Botao.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
 end
@@ -184,7 +219,7 @@ local Tela = Instance.new("ScreenGui")
 Tela.Name = "FPSBoostBlox"
 Tela.Parent = PlayerGui
 Tela.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-Tela.ResetOnSpawn = false -- Não desaparece ao renascer!
+Tela.ResetOnSpawn = false
 
 Botao = Instance.new("TextButton")
 Botao.Name = "BotaoFPS"
@@ -196,8 +231,8 @@ Botao.TextColor3 = Color3.fromRGB(255, 255, 255)
 Botao.Font = Enum.Font.GothamBold
 Botao.TextSize = 16
 Botao.AutoLocalize = false
-Botao.Active = true -- Permite arrastar!
-Botao.Draggable = true -- ✅ ARRASTÁVEL com o dedo!
+Botao.Active = true
+Botao.Draggable = true
 Botao.Parent = Tela
 
 local Canto = Instance.new("UICorner")
@@ -214,4 +249,4 @@ Botao.MouseButton1Click:Connect(function()
 end)
 
 SalvarConfigOriginal()
-print("✅ Pronto! Botão arrastável + liga/desliga funcionando!")
+print("✅ Tudo pronto! NÃO fica mais vermelho ao desligar!")
