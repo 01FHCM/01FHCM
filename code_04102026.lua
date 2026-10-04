@@ -1,315 +1,204 @@
 --==================================================
--- BLOX FRUITS FPS BOOST
--- MOBILE • ON/OFF • RESTAURAÇÃO COMPLETA
+-- BLOX FRUITS PVP FPS BOOST
+-- MOBILE
+-- ON / OFF
+-- RESTAURAÇÃO
 --==================================================
 
-local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
 local Terrain = workspace.Terrain
 
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
 
 --==================================================
--- ESTADO
+-- VARIÁVEIS
 --==================================================
 
-local OtimizacaoAtiva = false
+local Ativo = false
+local Estados = {}
 local Conexoes = {}
-local EstadosOriginais = {}
-
-local Botao
 
 --==================================================
--- FUNÇÃO: SALVAR PROPRIEDADE
+-- GUI
 --==================================================
 
-local function SalvarEstado(obj, propriedade, valor)
-    if not EstadosOriginais[obj] then
-        EstadosOriginais[obj] = {}
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "PvPFPSBoost"
+Gui.ResetOnSpawn = false
+Gui.IgnoreGuiInset = true
+Gui.Parent = PlayerGui
+
+local Botao = Instance.new("TextButton")
+Botao.Name = "FPSButton"
+Botao.Size = UDim2.fromOffset(150, 55)
+Botao.Position = UDim2.new(0, 15, 0.5, -25)
+Botao.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+Botao.TextColor3 = Color3.new(1, 1, 1)
+Botao.Text = "FPS BOOST: OFF"
+Botao.TextSize = 15
+Botao.Font = Enum.Font.GothamBold
+Botao.Active = true
+Botao.AutoButtonColor = true
+Botao.Parent = Gui
+
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 12)
+Corner.Parent = Botao
+
+--==================================================
+-- SALVAR PROPRIEDADE
+--==================================================
+
+local function Salvar(obj, propriedade)
+
+    if not obj or not obj.Parent then
+        return
     end
 
-    if EstadosOriginais[obj][propriedade] == nil then
-        EstadosOriginais[obj][propriedade] = valor
+    if not Estados[obj] then
+        Estados[obj] = {}
     end
-end
 
---==================================================
--- SALVAR LIGHTING / TERRAIN
---==================================================
+    if Estados[obj][propriedade] == nil then
 
-local ConfigOriginal = {}
+        local sucesso, valor = pcall(function()
+            return obj[propriedade]
+        end)
 
-local function SalvarConfigOriginal()
-
-    ConfigOriginal = {
-        Quality = settings().Rendering.QualityLevel,
-
-        Shadows = Lighting.GlobalShadows,
-        FogEnd = Lighting.FogEnd,
-        Brightness = Lighting.Brightness,
-        Specular = Lighting.EnvironmentSpecularScale,
-
-        WaterSize = Terrain.WaterWaveSize,
-        WaterSpeed = Terrain.WaterWaveSpeed,
-        WaterReflect = Terrain.WaterReflectance,
-        WaterTransp = Terrain.WaterTransparency
-    }
-
-    -- Salvar efeitos existentes
-    for _, obj in ipairs(Lighting:GetChildren()) do
-        if obj:IsA("PostEffect") or obj:IsA("Atmosphere") then
-            SalvarEstado(obj, "Enabled", obj.Enabled)
+        if sucesso then
+            Estados[obj][propriedade] = valor
         end
+
     end
 end
 
 --==================================================
--- OTIMIZAR OBJETO
+-- ALTERAR OBJETO
 --==================================================
 
-local function OtimizarObj(obj)
+local function Otimizar(obj)
 
-    if not OtimizacaoAtiva then
+    if not Ativo then
         return
     end
 
-    -- Não alterar o personagem
-    local Character = LocalPlayer.Character
-
-    if Character and obj:IsDescendantOf(Character) then
+    -- Nunca mexer no personagem
+    if Player.Character
+        and obj:IsDescendantOf(Player.Character) then
         return
     end
 
-    -- BASEPART
+    -- PARTES
     if obj:IsA("BasePart") then
 
+        Salvar(obj, "Material")
+        Salvar(obj, "Reflectance")
+        Salvar(obj, "CastShadow")
+
         pcall(function()
-
-            SalvarEstado(obj, "Material", obj.Material)
-            SalvarEstado(obj, "Reflectance", obj.Reflectance)
-            SalvarEstado(obj, "CastShadow", obj.CastShadow)
-            SalvarEstado(obj, "RenderFidelity", obj.RenderFidelity)
-
             obj.Material = Enum.Material.SmoothPlastic
             obj.Reflectance = 0
             obj.CastShadow = false
+        end)
+
+    end
+
+    -- MESH
+    if obj:IsA("MeshPart") then
+
+        Salvar(obj, "RenderFidelity")
+
+        pcall(function()
             obj.RenderFidelity = Enum.RenderFidelity.Performance
-
         end)
 
-    -- PARTICLE
-    elseif obj:IsA("ParticleEmitter") then
-
-        pcall(function()
-
-            SalvarEstado(obj, "Rate", obj.Rate)
-            SalvarEstado(obj, "Lifetime", obj.Lifetime)
-
-            obj.Rate = obj.Rate * 0.3
-
-            obj.Lifetime = NumberRange.new(
-                obj.Lifetime.Min * 0.4,
-                obj.Lifetime.Max * 0.4
-            )
-
-        end)
-
-    -- TRAIL / SMOKE / FIRE / SPARKLES
-    elseif obj:IsA("Trail")
-        or obj:IsA("Smoke")
-        or obj:IsA("Fire")
-        or obj:IsA("Sparkles") then
-
-        pcall(function()
-
-            SalvarEstado(obj, "Enabled", obj.Enabled)
-
-            obj.Enabled = false
-
-        end)
-
-    -- TEXTURE / DECAL
-    elseif obj:IsA("Texture")
-        or obj:IsA("Decal") then
-
-        pcall(function()
-
-            if obj.Parent and not obj.Parent:IsA("GuiObject") then
-
-                SalvarEstado(obj, "Transparency", obj.Transparency)
-
-                -- NÃO DESTRÓI.
-                -- Apenas deixa invisível temporariamente.
-                obj.Transparency = 1
-
-            end
-
-        end)
-
-    -- EFEITOS DE LIGHTING
-    elseif obj:IsA("PostEffect") or obj:IsA("Atmosphere") then
-
-        pcall(function()
-
-            SalvarEstado(obj, "Enabled", obj.Enabled)
-
-            obj.Enabled = false
-
-        end)
-    end
-end
-
---==================================================
--- APLICAR FPS BOOST
---==================================================
-
-local function AplicarOtimizacao()
-
-    if OtimizacaoAtiva then
-        return
     end
 
-    OtimizacaoAtiva = true
+    -- PARTICULAS
+    if obj:IsA("ParticleEmitter") then
 
-    -- Salvar configurações novamente
-    EstadosOriginais = {}
-    SalvarConfigOriginal()
+        Salvar(obj, "Rate")
 
-    --==================================================
-    -- QUALIDADE
-    --==================================================
+        pcall(function()
+            obj.Rate = math.max(obj.Rate * 0.35, 1)
+        end)
 
-    pcall(function()
-        settings().Rendering.QualityLevel = Enum.QualityLevel.Level02
-    end)
-
-    --==================================================
-    -- LIGHTING
-    --==================================================
-
-    pcall(function()
-
-        Lighting.GlobalShadows = false
-        Lighting.FogEnd = 1500
-        Lighting.Brightness = 2
-        Lighting.EnvironmentSpecularScale = 0
-
-    end)
-
-    --==================================================
-    -- EFEITOS
-    --==================================================
-
-    for _, obj in ipairs(Lighting:GetChildren()) do
-        OtimizarObj(obj)
     end
 
-    --==================================================
-    -- ÁGUA
-    --==================================================
+    -- TRAIL
+    if obj:IsA("Trail") then
 
-    pcall(function()
+        Salvar(obj, "Lifetime")
 
-        Terrain.WaterWaveSize = 0.1
-        Terrain.WaterWaveSpeed = 2
-        Terrain.WaterReflectance = 0
-        Terrain.WaterTransparency = 0.3
-
-    end)
-
-    --==================================================
-    -- OTIMIZAR WORKSPACE
-    --==================================================
-
-    task.spawn(function()
-
-        for _, obj in ipairs(workspace:GetDescendants()) do
-
-            if not OtimizacaoAtiva then
-                break
-            end
-
-            OtimizarObj(obj)
-
-            -- Evita travar o celular processando tudo de uma vez
-            task.wait()
-
-        end
-
-    end)
-
-    --==================================================
-    -- OBJETOS NOVOS
-    --==================================================
-
-    table.insert(
-        Conexoes,
-
-        workspace.DescendantAdded:Connect(function(obj)
-
-            if not OtimizacaoAtiva then
-                return
-            end
-
-            task.delay(0.03, function()
-
-                if OtimizacaoAtiva and obj.Parent then
-                    OtimizarObj(obj)
-                end
-
-            end)
-
+        pcall(function()
+            obj.Lifetime = obj.Lifetime * 0.5
         end)
-    )
 
-    --==================================================
-    -- NOVOS EFEITOS NO LIGHTING
-    --==================================================
+    end
 
-    table.insert(
-        Conexoes,
+    -- SMOKE
+    if obj:IsA("Smoke") then
 
-        Lighting.ChildAdded:Connect(function(obj)
+        Salvar(obj, "Opacity")
 
-            if not OtimizacaoAtiva then
-                return
-            end
-
-            task.delay(0.03, function()
-
-                if OtimizacaoAtiva and obj.Parent then
-                    OtimizarObj(obj)
-                end
-
-            end)
-
+        pcall(function()
+            obj.Opacity = obj.Opacity * 0.35
         end)
-    )
 
-    --==================================================
-    -- BOTÃO
-    --==================================================
+    end
 
-    Botao.Text = "✅ FPS ON"
-    Botao.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+    -- FIRE
+    if obj:IsA("Fire") then
 
+        Salvar(obj, "Size")
+
+        pcall(function()
+            obj.Size = obj.Size * 0.5
+        end)
+
+    end
+
+    -- TEXTURE
+    if obj:IsA("Texture") then
+
+        Salvar(obj, "Transparency")
+
+        pcall(function()
+            obj.Transparency =
+                math.min(obj.Transparency + 0.4, 1)
+        end)
+
+    end
+
+    -- DECAL
+    if obj:IsA("Decal") then
+
+        Salvar(obj, "Transparency")
+
+        pcall(function()
+            obj.Transparency =
+                math.min(obj.Transparency + 0.3, 1)
+        end)
+
+    end
 end
 
 --==================================================
 -- RESTAURAR OBJETOS
 --==================================================
 
-local function RestaurarObjetos()
+local function Restaurar()
 
-    for obj, propriedades in pairs(EstadosOriginais) do
+    for obj, propriedades in pairs(Estados) do
 
         if obj and obj.Parent then
 
-            for propriedade, valorOriginal in pairs(propriedades) do
+            for propriedade, valor in pairs(propriedades) do
 
                 pcall(function()
-                    obj[propriedade] = valorOriginal
+                    obj[propriedade] = valor
                 end)
 
             end
@@ -318,106 +207,217 @@ local function RestaurarObjetos()
 
     end
 
+    Estados = {}
 end
 
 --==================================================
--- DESATIVAR FPS BOOST
+-- SALVAR LIGHTING
 --==================================================
 
-local function DesativarOtimizacao()
+local LightingOriginal = {}
 
-    if not OtimizacaoAtiva then
+local function SalvarLighting()
+
+    LightingOriginal.GlobalShadows =
+        Lighting.GlobalShadows
+
+    LightingOriginal.FogEnd =
+        Lighting.FogEnd
+
+    LightingOriginal.Brightness =
+        Lighting.Brightness
+
+    LightingOriginal.EnvironmentSpecularScale =
+        Lighting.EnvironmentSpecularScale
+
+    LightingOriginal.WaterWaveSize =
+        Terrain.WaterWaveSize
+
+    LightingOriginal.WaterWaveSpeed =
+        Terrain.WaterWaveSpeed
+
+    LightingOriginal.WaterReflectance =
+        Terrain.WaterReflectance
+
+    LightingOriginal.WaterTransparency =
+        Terrain.WaterTransparency
+
+end
+
+--==================================================
+-- ATIVAR
+--==================================================
+
+local function Ativar()
+
+    if Ativo then
         return
     end
 
-    -- Primeiro impede novas alterações
-    OtimizacaoAtiva = false
+    Ativo = true
 
-    --==================================================
-    -- DESCONECTAR
-    --==================================================
+    -- Limpar estados antigos
+    Estados = {}
 
-    for i = #Conexoes, 1, -1 do
+    SalvarLighting()
 
-        local conexao = Conexoes[i]
+    -- GRÁFICOS
+    pcall(function()
+        settings().Rendering.QualityLevel =
+            Enum.QualityLevel.Level02
+    end)
 
-        if typeof(conexao) == "RBXScriptConnection" then
-            pcall(function()
-                conexao:Disconnect()
-            end)
+    -- LIGHTING
+    pcall(function()
+
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 1500
+        Lighting.EnvironmentSpecularScale = 0
+
+    end)
+
+    -- ÁGUA
+    pcall(function()
+
+        Terrain.WaterWaveSize = 0
+        Terrain.WaterWaveSpeed = 0
+        Terrain.WaterReflectance = 0
+
+    end)
+
+    -- OBJETOS EXISTENTES
+    task.spawn(function()
+
+        local objetos = workspace:GetDescendants()
+
+        for i, obj in ipairs(objetos) do
+
+            if not Ativo then
+                break
+            end
+
+            Otimizar(obj)
+
+            -- Evita congelar o celular
+            if i % 100 == 0 then
+                task.wait()
+            end
+
         end
 
-        Conexoes[i] = nil
+    end)
+
+    -- OBJETOS NOVOS
+    table.insert(
+        Conexoes,
+        workspace.DescendantAdded:Connect(function(obj)
+
+            if Ativo then
+                task.defer(function()
+                    if Ativo then
+                        Otimizar(obj)
+                    end
+                end)
+            end
+
+        end)
+    )
+
+    -- BOTÃO
+    Botao.Text = "FPS BOOST: ON"
+    Botao.BackgroundColor3 =
+        Color3.fromRGB(40, 180, 90)
+
+end
+
+--==================================================
+-- DESATIVAR
+--==================================================
+
+local function Desativar()
+
+    if not Ativo then
+        return
+    end
+
+    Ativo = false
+
+    -- Desconectar eventos
+    for _, conexao in ipairs(Conexoes) do
+
+        pcall(function()
+            conexao:Disconnect()
+        end)
 
     end
 
-    --==================================================
-    -- RESTAURAR QUALIDADE
-    --==================================================
+    Conexoes = {}
 
+    -- RESTAURAR OBJETOS
+    Restaurar()
+
+    -- RESTAURAR QUALITY
     pcall(function()
         settings().Rendering.QualityLevel =
-            ConfigOriginal.Quality
+            Enum.QualityLevel.Automatic
     end)
 
-    --==================================================
     -- RESTAURAR LIGHTING
-    --==================================================
-
     pcall(function()
 
         Lighting.GlobalShadows =
-            ConfigOriginal.Shadows
+            LightingOriginal.GlobalShadows
 
         Lighting.FogEnd =
-            ConfigOriginal.FogEnd
+            LightingOriginal.FogEnd
 
         Lighting.Brightness =
-            ConfigOriginal.Brightness
+            LightingOriginal.Brightness
 
         Lighting.EnvironmentSpecularScale =
-            ConfigOriginal.Specular
+            LightingOriginal.EnvironmentSpecularScale
 
     end)
 
-    --==================================================
     -- RESTAURAR ÁGUA
-    --==================================================
-
     pcall(function()
 
         Terrain.WaterWaveSize =
-            ConfigOriginal.WaterSize
+            LightingOriginal.WaterWaveSize
 
         Terrain.WaterWaveSpeed =
-            ConfigOriginal.WaterSpeed
+            LightingOriginal.WaterWaveSpeed
 
         Terrain.WaterReflectance =
-            ConfigOriginal.WaterReflect
+            LightingOriginal.WaterReflectance
 
         Terrain.WaterTransparency =
-            ConfigOriginal.WaterTransp
+            LightingOriginal.WaterTransparency
 
     end)
 
-    --==================================================
-    -- RESTAURAR OBJETOS
-    --==================================================
-
-    RestaurarObjetos()
-
-    --==================================================
-    -- LIMPAR ESTADOS
-    --==================================================
-
-    EstadosOriginais = {}
-
-    --==================================================
     -- BOTÃO
-    --==================================================
+    Botao.Text = "FPS BOOST: OFF"
+    Botao.BackgroundColor3 =
+        Color3.fromRGB(200, 50, 50)
 
-    Botao.Text = "⚡ FPS OFF"
-    Botao.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+end
+
+--==================================================
+-- BOTÃO MOBILE
+--==================================================
+
+Botao.Activated:Connect(function()
+
+    if Ativo then
+        Desativar()
+    else
+        Ativar()
+    end
+
+end)
+
+print("PvP FPS Boost carregado.") = Color3.fromRGB(231, 76, 60)
 
 end
 
