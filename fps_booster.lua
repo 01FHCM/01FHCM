@@ -1,194 +1,466 @@
--- FPS Booster (Mobile) com botão ON/OFF
--- Reduz gráficos: sombras, partículas, efeitos, materiais e água.
--- Ao desativar, restaura tudo ao normal.
+--==================================================
+-- ULTRA FPS BOOSTER - MOBILE
+-- FPS DINÂMICO + BOTÃO MINIMALISTA + ARRASTÁVEL
+--==================================================
 
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
-local Workspace = game:GetService("Workspace")
-local UIS = game:GetService("UserInputService")
-local lp = Players.LocalPlayer
+local Terrain = workspace.Terrain
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
--- Evita duplicar se executar duas vezes
-local GUI_NAME = "FPSBoosterGui"
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+local Ativo = false
+local Salvos = {}
+
+--==================================================
+-- GUI
+--==================================================
+
 pcall(function()
-	local old = (gethui and gethui() or game:GetService("CoreGui")):FindFirstChild(GUI_NAME)
-	if old then old:Destroy() end
-end)
-pcall(function()
-	local old = lp.PlayerGui:FindFirstChild(GUI_NAME)
-	if old then old:Destroy() end
-end)
+    local antiga = PlayerGui:FindFirstChild("UltraFPS")
 
-local enabled = false
-local busy = false
-local saved = setmetatable({}, { __mode = "k" }) -- [instância] = {propriedade = valorOriginal}
-local connections = {}
-local originalQuality
-
-local function save(inst, prop, newValue)
-	local ok, old = pcall(function() return inst[prop] end)
-	if not ok then return end
-	saved[inst] = saved[inst] or {}
-	if saved[inst][prop] == nil then
-		saved[inst][prop] = old
-	end
-	pcall(function() inst[prop] = newValue end)
-end
-
-local function optimize(inst)
-	if inst:IsA("BasePart") then
-		save(inst, "Material", Enum.Material.SmoothPlastic)
-	elseif inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam")
-		or inst:IsA("Smoke") or inst:IsA("Fire") or inst:IsA("Sparkles") then
-		save(inst, "Enabled", false)
-	elseif inst:IsA("PostEffect") then
-		save(inst, "Enabled", false)
-	elseif inst:IsA("Atmosphere") then
-		save(inst, "Density", 0)
-		save(inst, "Haze", 0)
-	end
-end
-
-local function applyLighting()
-	save(Lighting, "GlobalShadows", false)
-	save(Lighting, "FogEnd", 9e9)
-	save(Lighting, "ShadowSoftness", 0)
-	local terrain = Workspace:FindFirstChildOfClass("Terrain")
-	if terrain then
-		save(terrain, "WaterWaveSize", 0)
-		save(terrain, "WaterWaveSpeed", 0)
-		save(terrain, "WaterReflectance", 0)
-	end
-	pcall(function()
-		originalQuality = originalQuality or settings().Rendering.QualityLevel
-		settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-	end)
-end
-
-local function enable()
-	if busy then return end
-	busy = true
-	enabled = true
-
-	applyLighting()
-
-	-- Novos efeitos (skills de PvP) também são cortados enquanto ativo
-	-- Só efeitos (barato). Partes novas são ignoradas para evitar picos de lag.
-	local function onAdded(d)
-		if enabled and not d:IsA("BasePart") then optimize(d) end
-	end
-	table.insert(connections, Workspace.DescendantAdded:Connect(onAdded))
-	table.insert(connections, Lighting.DescendantAdded:Connect(onAdded))
-
-	-- Limita FPS a 60 (menos calor = menos travadas por throttling do celular)
-	pcall(function()
-		if setfpscap then setfpscap(60) end
-	end)
-
-	-- Processa em lotes para não travar o celular
-	local function run(list)
-		for i, d in ipairs(list) do
-			if not enabled then return end
-			optimize(d)
-			if i % 100 == 0 then task.wait() end
-		end
-	end
-	run(Lighting:GetDescendants())
-	run(Workspace:GetDescendants())
-
-	busy = false
-end
-
-local function disable()
-	enabled = false
-	for _, c in ipairs(connections) do c:Disconnect() end
-	table.clear(connections)
-
-	-- Espera o lote terminar, se ainda estiver rodando
-	while busy do task.wait() end
-	busy = true
-
-	local n = 0
-	for inst, props in pairs(saved) do
-		for prop, value in pairs(props) do
-			pcall(function() inst[prop] = value end)
-		end
-		n += 1
-		if n % 100 == 0 then task.wait() end
-	end
-	table.clear(saved)
-
-	pcall(function()
-		if originalQuality then
-			settings().Rendering.QualityLevel = originalQuality
-			originalQuality = nil
-		end
-	end)
-	busy = false
-end
-
--- ========== BOTÃO ==========
-local gui = Instance.new("ScreenGui")
-gui.Name = GUI_NAME
-gui.ResetOnSpawn = false
-gui.DisplayOrder = 999
-local okParent = pcall(function() gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end)
-if not okParent or not gui.Parent then gui.Parent = lp:WaitForChild("PlayerGui") end
-
-local btn = Instance.new("TextButton")
-btn.Size = UDim2.new(0, 110, 0, 38)
-btn.Position = UDim2.new(0, 12, 0.35, 0)
-btn.BackgroundColor3 = Color3.fromRGB(190, 50, 50)
-btn.TextColor3 = Color3.new(1, 1, 1)
-btn.Font = Enum.Font.GothamBold
-btn.TextSize = 14
-btn.Text = "FPS: OFF"
-btn.AutoButtonColor = false
-btn.Parent = gui
-Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
-
-local function refresh()
-	btn.Text = enabled and "FPS: ON" or "FPS: OFF"
-	btn.BackgroundColor3 = enabled and Color3.fromRGB(45, 170, 80) or Color3.fromRGB(190, 50, 50)
-end
-
-local function toggle()
-	if busy then return end
-	if enabled then
-		task.spawn(disable)
-	else
-		task.spawn(enable)
-	end
-	refresh()
-end
-
--- Toque = liga/desliga | Arrastar = move o botão
-local dragging, moved, dragStart, startPos = false, false, nil, nil
-
-btn.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.Touch
-		or input.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging, moved = true, false
-		dragStart, startPos = input.Position, btn.Position
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				dragging = false
-				if not moved then toggle() end
-			end
-		end)
-	end
+    if antiga then
+        antiga:Destroy()
+    end
 end)
 
-UIS.InputChanged:Connect(function(input)
-	if dragging and (input.UserInputType == Enum.UserInputType.Touch
-		or input.UserInputType == Enum.UserInputType.MouseMovement) then
-		local delta = input.Position - dragStart
-		if delta.Magnitude > 8 then moved = true end
-		if moved then
-			btn.Position = UDim2.new(
-				startPos.X.Scale, startPos.X.Offset + delta.X,
-				startPos.Y.Scale, startPos.Y.Offset + delta.Y
-			)
-		end
-	end
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "UltraFPS"
+Gui.ResetOnSpawn = false
+Gui.IgnoreGuiInset = true
+Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+Gui.Parent = PlayerGui
+
+--==================================================
+-- BOTÃO
+--==================================================
+
+local Botao = Instance.new("TextButton")
+
+Botao.Name = "FPSButton"
+Botao.Size = UDim2.new(0, 125, 0, 38)
+Botao.Position = UDim2.new(0, 15, 0.5, -19)
+
+Botao.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+Botao.BackgroundTransparency = 0.15
+
+Botao.TextColor3 = Color3.fromRGB(235, 235, 235)
+Botao.Text = "FPS  OFF"
+Botao.TextSize = 14
+Botao.Font = Enum.Font.GothamMedium
+
+Botao.BorderSizePixel = 0
+Botao.AutoButtonColor = false
+Botao.Active = true
+Botao.Parent = Gui
+
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 9)
+Corner.Parent = Botao
+
+--==================================================
+-- INDICADOR
+--==================================================
+
+local Indicador = Instance.new("Frame")
+
+Indicador.Size = UDim2.new(0, 6, 0, 6)
+Indicador.Position = UDim2.new(0, 10, 0.5, -3)
+
+Indicador.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
+Indicador.BorderSizePixel = 0
+Indicador.Parent = Botao
+
+local IndicadorCorner = Instance.new("UICorner")
+IndicadorCorner.CornerRadius = UDim.new(1, 0)
+IndicadorCorner.Parent = Indicador
+
+--==================================================
+-- CONTADOR FPS
+--==================================================
+
+local FPSLabel = Instance.new("TextLabel")
+
+FPSLabel.Name = "FPSCounter"
+
+FPSLabel.Size = UDim2.new(0, 85, 0, 22)
+FPSLabel.Position = UDim2.new(0, 15, 0.5, 25)
+
+-- FUNDO PRETO
+FPSLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+FPSLabel.BackgroundTransparency = 0.15
+
+-- TEXTO FINO
+FPSLabel.Text = "FPS: --"
+FPSLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+FPSLabel.TextSize = 13
+FPSLabel.Font = Enum.Font.Gotham
+
+FPSLabel.TextXAlignment = Enum.TextXAlignment.Center
+FPSLabel.TextYAlignment = Enum.TextYAlignment.Center
+
+FPSLabel.BorderSizePixel = 0
+FPSLabel.Parent = Gui
+
+local FPSCorner = Instance.new("UICorner")
+FPSCorner.CornerRadius = UDim.new(0, 5)
+FPSCorner.Parent = FPSLabel
+
+--==================================================
+-- SALVAR PROPRIEDADES
+--==================================================
+
+local function Salvar(obj, prop)
+
+    if not obj then
+        return
+    end
+
+    Salvos[obj] = Salvos[obj] or {}
+
+    if Salvos[obj][prop] == nil then
+
+        pcall(function()
+            Salvos[obj][prop] = obj[prop]
+        end)
+
+    end
+end
+
+--==================================================
+-- OTIMIZAR OBJETO
+--==================================================
+
+local function Otimizar(obj)
+
+    if not Ativo then
+        return
+    end
+
+    pcall(function()
+
+        -- PARTES
+        if obj:IsA("BasePart") then
+
+            Salvar(obj, "Material")
+            Salvar(obj, "Reflectance")
+            Salvar(obj, "CastShadow")
+
+            obj.Material = Enum.Material.Plastic
+            obj.Reflectance = 0
+            obj.CastShadow = false
+
+        -- PARTÍCULAS E EFEITOS
+        elseif obj:IsA("ParticleEmitter")
+        or obj:IsA("Trail")
+        or obj:IsA("Beam")
+        or obj:IsA("Smoke")
+        or obj:IsA("Fire")
+        or obj:IsA("Sparkles") then
+
+            Salvar(obj, "Enabled")
+
+            obj.Enabled = false
+
+        -- TEXTURAS
+        elseif obj:IsA("Texture")
+        or obj:IsA("Decal") then
+
+            Salvar(obj, "Transparency")
+
+            obj.Transparency = 1
+
+        -- MESH
+        elseif obj:IsA("SpecialMesh") then
+
+            Salvar(obj, "TextureId")
+
+            obj.TextureId = ""
+
+        -- HIGHLIGHT
+        elseif obj:IsA("Highlight") then
+
+            Salvar(obj, "Enabled")
+
+            obj.Enabled = false
+
+        end
+
+    end)
+end
+
+--==================================================
+-- ATIVAR
+--==================================================
+
+local function Ativar()
+
+    Ativo = true
+
+    -- QUALIDADE MÍNIMA
+    pcall(function()
+
+        settings().Rendering.QualityLevel =
+            Enum.QualityLevel.Level01
+
+    end)
+
+    -- ILUMINAÇÃO
+    Salvar(Lighting, "GlobalShadows")
+    Salvar(Lighting, "Brightness")
+    Salvar(Lighting, "FogEnd")
+
+    pcall(function()
+
+        Lighting.GlobalShadows = false
+        Lighting.Brightness = 1
+        Lighting.FogEnd = 1000000000
+
+    end)
+
+    -- PÓS-PROCESSAMENTO
+    for _, obj in ipairs(Lighting:GetChildren()) do
+
+        if obj:IsA("PostEffect")
+        or obj:IsA("Atmosphere") then
+
+            Salvar(obj, "Enabled")
+
+            pcall(function()
+                obj.Enabled = false
+            end)
+
+        end
+    end
+
+    -- ÁGUA
+    Salvar(Terrain, "WaterWaveSize")
+    Salvar(Terrain, "WaterWaveSpeed")
+    Salvar(Terrain, "WaterReflectance")
+    Salvar(Terrain, "WaterTransparency")
+
+    pcall(function()
+
+        Terrain.WaterWaveSize = 0
+        Terrain.WaterWaveSpeed = 0
+        Terrain.WaterReflectance = 0
+        Terrain.WaterTransparency = 1
+
+    end)
+
+    -- MAPA
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        Otimizar(obj)
+    end
+
+    Botao.Text = "FPS  ON"
+    Indicador.BackgroundColor3 =
+        Color3.fromRGB(60, 210, 90)
+
+    print("ULTRA FPS: ON")
+
+end
+
+--==================================================
+-- DESATIVAR
+--==================================================
+
+local function Desativar()
+
+    Ativo = false
+
+    for obj, propriedades in pairs(Salvos) do
+
+        if obj and obj.Parent then
+
+            for prop, valor in pairs(propriedades) do
+
+                pcall(function()
+                    obj[prop] = valor
+                end)
+
+            end
+
+        end
+    end
+
+    Salvos = {}
+
+    -- RESTAURAR QUALIDADE
+    pcall(function()
+
+        settings().Rendering.QualityLevel =
+            Enum.QualityLevel.Automatic
+
+    end)
+
+    Botao.Text = "FPS  OFF"
+
+    Indicador.BackgroundColor3 =
+        Color3.fromRGB(220, 60, 60)
+
+    print("ULTRA FPS: OFF")
+
+end
+
+--==================================================
+-- ARRASTAR NO MOBILE
+--==================================================
+
+local pressionado = false
+local arrastando = false
+
+local inicioToque
+local inicioPosicao
+
+Botao.InputBegan:Connect(function(input)
+
+    if input.UserInputType == Enum.UserInputType.Touch
+    or input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+        pressionado = true
+        arrastando = false
+
+        inicioToque = input.Position
+        inicioPosicao = Botao.Position
+
+    end
+
 end)
+
+UserInputService.InputChanged:Connect(function(input)
+
+    if not pressionado then
+        return
+    end
+
+    if input.UserInputType == Enum.UserInputType.Touch
+    or input.UserInputType == Enum.UserInputType.MouseMovement then
+
+        local delta =
+            input.Position - inicioToque
+
+        if math.abs(delta.X) > 8
+        or math.abs(delta.Y) > 8 then
+
+            arrastando = true
+
+            Botao.Position = UDim2.new(
+                inicioPosicao.X.Scale,
+                inicioPosicao.X.Offset + delta.X,
+                inicioPosicao.Y.Scale,
+                inicioPosicao.Y.Offset + delta.Y
+            )
+
+            -- CONTADOR ACOMPANHA O BOTÃO
+            FPSLabel.Position = UDim2.new(
+                inicioPosicao.X.Scale,
+                inicioPosicao.X.Offset + delta.X,
+                inicioPosicao.Y.Scale,
+                inicioPosicao.Y.Offset + delta.Y + 41
+            )
+
+        end
+
+    end
+
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+
+    if input.UserInputType == Enum.UserInputType.Touch
+    or input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+        if pressionado and not arrastando then
+
+            if Ativo then
+                Desativar()
+            else
+                Ativar()
+            end
+
+        end
+
+        pressionado = false
+        arrastando = false
+
+    end
+
+end)
+
+--==================================================
+-- NOVOS OBJETOS
+--==================================================
+
+workspace.DescendantAdded:Connect(function(obj)
+
+    if Ativo then
+
+        task.defer(function()
+
+            if Ativo then
+                Otimizar(obj)
+            end
+
+        end)
+
+    end
+
+end)
+
+--==================================================
+-- CONTADOR DE FPS
+--==================================================
+
+local frames = 0
+local ultimoTempo = os.clock()
+
+RunService.RenderStepped:Connect(function()
+
+    frames += 1
+
+    local agora = os.clock()
+
+    if agora - ultimoTempo >= 1 then
+
+        local fps = math.floor(
+            frames / (agora - ultimoTempo)
+        )
+
+        FPSLabel.Text = "FPS: " .. fps
+
+        --==================================================
+        -- COR DINÂMICA
+        --==================================================
+
+        if fps >= 50 then
+
+            -- VERDE SUAVE
+            FPSLabel.TextColor3 =
+                Color3.fromRGB(120, 255, 140)
+
+        elseif fps >= 30 then
+
+            -- AMARELO SUAVE
+            FPSLabel.TextColor3 =
+                Color3.fromRGB(255, 220, 100)
+
+        else
+
+            -- VERMELHO SUAVE
+            FPSLabel.TextColor3 =
+                Color3.fromRGB(255, 110, 110)
+
+        end
+
+        frames = 0
+        ultimoTempo = agora
+
+    end
+
+end)
+
+print("ULTRA FPS MOBILE CARREGADO")
