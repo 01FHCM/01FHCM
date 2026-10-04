@@ -1,20 +1,21 @@
 -- ==============================================
--- BLOX FRUITS FPS BOOST — VERSÃO CELULAR C/ BOTÃO
--- Ativa/Desativa • Não quebra PvP • Água visível
+-- BLOX FRUITS FPS BOOST • CORRIGIDA + ARRASTÁVEL
+-- ✅ Liga/desliga sem travar
+-- ✅ Botão move com o dedo
+-- ✅ Sem ficar vermelho/bloqueado
 -- ==============================================
 
 local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local Terrain = workspace.Terrain
-local RunService = game:GetService("RunService")
 local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 
--- ⚙️ ESTADO DA OTIMIZAÇÃO
+-- ⚙️ ESTADO
 local OtimizacaoAtiva = false
 local Conexoes = {}
 local ConfigOriginal = {}
 
--- 📋 SALVAR configurações ORIGINAIS pra restaurar depois
+-- 📋 SALVAR configurações originais
 local function SalvarConfigOriginal()
     ConfigOriginal = {
         Quality = settings().Rendering.QualityLevel,
@@ -25,13 +26,20 @@ local function SalvarConfigOriginal()
         WaterSpeed = Terrain.WaterWaveSpeed,
         WaterReflect = Terrain.WaterReflectance,
         WaterTransp = Terrain.WaterTransparency,
+        Specular = Lighting.EnvironmentSpecularScale,
     }
 end
 
--- ⚡ APLICAR otimização
+-- ⚡ APLICAR OTIMIZAÇÃO
 local function AplicarOtimizacao()
     if OtimizacaoAtiva then return end
     OtimizacaoAtiva = true
+
+    -- Limpar conexões antigas
+    for i = #Conexoes, 1, -1 do
+        Conexoes[i]:Disconnect()
+        Conexoes[i] = nil
+    end
 
     -- Qualidade
     pcall(function()
@@ -54,14 +62,16 @@ local function AplicarOtimizacao()
         end)
     end
 
-    -- Água
+    -- Água visível
     Terrain.WaterWaveSize = 0.1
     Terrain.WaterWaveSpeed = 2
     Terrain.WaterReflectance = 0
     Terrain.WaterTransparency = 0.3
 
-    -- Função de otimização
+    -- Otimização de objetos
     local function OtimizarObj(obj)
+        if not OtimizacaoAtiva then return end
+        
         if obj:IsA("BasePart") then
             pcall(function()
                 if not obj:IsDescendantOf(Players.LocalPlayer.Character) then
@@ -91,21 +101,19 @@ local function AplicarOtimizacao()
         elseif obj:IsA("Texture") or obj:IsA("Decal") then
             pcall(function()
                 if not obj:IsDescendantOf(Players.LocalPlayer.Character)
-                and not obj.Parent:IsA("PlayerGui") then
+                and not obj.Parent:IsA("GuiObject") then
                     obj:Destroy()
                 end
             end)
         end
     end
 
-    -- Limpar conexões antigas
-    for _, conn in pairs(Conexoes) do conn:Disconnect() end
-    Conexoes = {}
-
-    -- Aplicar em tudo existente
+    -- Aplicar em tudo
     task.spawn(function()
         for _, obj in ipairs(workspace:GetDescendants()) do
-            task.delay(0.001, function() OtimizarObj(obj) end)
+            if OtimizacaoAtiva then
+                task.delay(0.001, function() OtimizarObj(obj) end)
+            end
         end
     end)
 
@@ -114,7 +122,7 @@ local function AplicarOtimizacao()
         task.delay(0.003, function() OtimizarObj(obj) end)
     end))
 
-    -- Coletar lixo
+    -- Limpeza de memória
     table.insert(Conexoes, task.spawn(function()
         while OtimizacaoAtiva do
             task.wait(120)
@@ -122,38 +130,40 @@ local function AplicarOtimizacao()
         end
     end))
 
+    -- ✅ Botão verde = LIGADO
     Botao.Text = "✅ FPS ON"
-    Botao.BackgroundColor3 = Color3.fromRGB(40, 180, 80)
+    Botao.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
 end
 
--- 🔄 DESLIGAR — voltar ao normal
+-- 🔄 DESLIGAR — VOLTA TUDO AO NORMAL
 local function DesativarOtimizacao()
     if not OtimizacaoAtiva then return end
     OtimizacaoAtiva = false
 
-    -- Desconectar tudo
-    for _, conn in pairs(Conexoes) do
-        if typeof(conn) == "RBXScriptConnection" then
-            conn:Disconnect()
+    -- Desconectar TUDO
+    for i = #Conexoes, 1, -1 do
+        if typeof(Conexoes[i]) == "RBXScriptConnection" then
+            Conexoes[i]:Disconnect()
         end
+        Conexoes[i] = nil
     end
-    Conexoes = {}
 
-    -- Restaurar configurações originais
+    -- Restaurar iluminação
     pcall(function()
         settings().Rendering.QualityLevel = ConfigOriginal.Quality
     end)
     Lighting.GlobalShadows = ConfigOriginal.Shadows
     Lighting.FogEnd = ConfigOriginal.FogEnd
     Lighting.Brightness = ConfigOriginal.Brightness
-    Lighting.EnvironmentSpecularScale = 1
+    Lighting.EnvironmentSpecularScale = ConfigOriginal.Specular
 
+    -- Restaurar água
     Terrain.WaterWaveSize = ConfigOriginal.WaterSize
     Terrain.WaterWaveSpeed = ConfigOriginal.WaterSpeed
     Terrain.WaterReflectance = ConfigOriginal.WaterReflect
     Terrain.WaterTransparency = ConfigOriginal.WaterTransp
 
-    -- Reativar efeitos de iluminação
+    -- Reativar efeitos
     for _, v in ipairs(Lighting:GetChildren()) do
         pcall(function()
             if v:IsA("PostEffect") or v:IsA("Atmosphere") then
@@ -163,34 +173,38 @@ local function DesativarOtimizacao()
     end
 
     collectgarbage("collect")
+
+    -- ✅ Botão vermelho = DESLIGADO (funciona de novo!)
     Botao.Text = "⚡ FPS OFF"
-    Botao.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
+    Botao.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
 end
 
--- 📱 CRIAR BOTÃO NA TELA (adaptado pra celular)
+-- 📱 CRIAR BOTÃO ARRASTÁVEL
 local Tela = Instance.new("ScreenGui")
 Tela.Name = "FPSBoostBlox"
 Tela.Parent = PlayerGui
 Tela.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+Tela.ResetOnSpawn = false -- Não desaparece ao renascer!
 
 Botao = Instance.new("TextButton")
 Botao.Name = "BotaoFPS"
-Botao.Size = UDim2.new(0, 140, 0, 55) -- Tamanho bom pra dedo
-Botao.Position = UDim2.new(0.02, 0, 0.5, 0) -- Lado esquerdo, meio da tela
-Botao.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
+Botao.Size = UDim2.new(0, 140, 0, 55)
+Botao.Position = UDim2.new(0.02, 0, 0.5, 0)
+Botao.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
 Botao.Text = "⚡ FPS OFF"
 Botao.TextColor3 = Color3.fromRGB(255, 255, 255)
 Botao.Font = Enum.Font.GothamBold
 Botao.TextSize = 16
 Botao.AutoLocalize = false
+Botao.Active = true -- Permite arrastar!
+Botao.Draggable = true -- ✅ ARRASTÁVEL com o dedo!
 Botao.Parent = Tela
 
--- Cantos arredondados
 local Canto = Instance.new("UICorner")
 Canto.CornerRadius = UDim.new(0, 12)
 Canto.Parent = Botao
 
--- Função do clique/toque
+-- Alternar ao toque
 Botao.MouseButton1Click:Connect(function()
     if OtimizacaoAtiva then
         DesativarOtimizacao()
@@ -200,4 +214,4 @@ Botao.MouseButton1Click:Connect(function()
 end)
 
 SalvarConfigOriginal()
-print("✅ Botão FPS carregado! Toque para ligar/desligar")
+print("✅ Pronto! Botão arrastável + liga/desliga funcionando!")
